@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Sound Pack Creator</title>
+    <!-- Bootstrap 5.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        #dropArea {
+            border: 2px dashed #0d6efd;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background-color: #f8f9fa;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #dropArea:hover, #dropArea.active {
+            background-color: #e2e6ea;
+        }
+        .file-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .preview-container {
+            width: 128px;
+            height: 128px;
+            border: 1px solid #dee2e6;
+            margin: 10px auto;
+            position: relative;
+            background-color: #f8f9fa;
+            overflow: hidden;
+        }
+        #imagePreview {
+            max-width: 100%;
+            max-height: 100%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body>
+    <div class="container my-4">
+        <h1 class="text-center mb-4">Minecraft Sound Pack Creator</h1>
+        
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Pack Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="packName" class="form-label">Pack Name</label>
+                            <input type="text" class="form-control" id="packName" value="Custom Sound Pack">
+                        </div>
+                        <div class="mb-3">
+                            <label for="packDescription" class="form-label">Pack Description</label>
+                            <textarea class="form-control" id="packDescription" rows="2">Custom sounds for Minecraft</textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Pack Icon (128x128 recommended)</label>
+                            <div class="preview-container">
+                                <img id="imagePreview" src="" alt="Pack icon preview">
+                            </div>
+                            <input type="file" class="form-control mt-2" id="iconInput" accept="image/png">
+                            <div class="form-text">The image will be saved as pack_icon.png</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Audio Files</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="dropArea" class="mb-3">
+                            <p>Drop audio files here or click to select</p>
+                            <p class="text-muted small">Supported formats: .ogg, .wav, .fsb</p>
+                            <input type="file" id="fileInput" multiple accept=".ogg,.wav,.fsb" style="display: none;">
+                        </div>
+                        <div class="alert alert-info">
+                            Files will be placed in MusicPack\sounds\custom_music\
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Selected Files</h5>
+                <button id="clearBtn" class="btn btn-sm btn-outline-danger">Clear All</button>
+            </div>
+            <div class="card-body file-list" id="fileList">
+                <p class="text-muted text-center">No files selected</p>
+            </div>
+        </div>
+        
+        <div class="text-center mb-4">
+            <button id="createPackBtn" class="btn btn-primary btn-lg" disabled>Create Sound Pack</button>
+        </div>
+        
+        <div class="progress mb-3" style="display: none;">
+            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+        </div>
+        
+        <div id="alertArea"></div>
+    </div>
+
+    <!-- Bootstrap 5.3 JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- JSZip 3.10.1 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- FileSaver.js 2.0.5 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropArea = document.getElementById('dropArea');
+            const fileInput = document.getElementById('fileInput');
+            const fileList = document.getElementById('fileList');
+            const createPackBtn = document.getElementById('createPackBtn');
+            const clearBtn = document.getElementById('clearBtn');
+            const progress = document.querySelector('.progress');
+            const progressBar = document.querySelector('.progress-bar');
+            const alertArea = document.getElementById('alertArea');
+            const iconInput = document.getElementById('iconInput');
+            const imagePreview = document.getElementById('imagePreview');
+            
+            let selectedFiles = [];
+            let packIcon = null;
+            
+            // Handle drag and drop events
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, () => {
+                    dropArea.classList.add('active');
+                });
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, () => {
+                    dropArea.classList.remove('active');
+                });
+            });
+            
+            dropArea.addEventListener('drop', handleDrop);
+            dropArea.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', handleFileSelect);
+            clearBtn.addEventListener('click', clearFileList);
+            createPackBtn.addEventListener('click', createSoundPack);
+            
+            // Handle pack icon selection
+            iconInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file && file.type === 'image/png') {
+                    packIcon = file;
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        imagePreview.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    showAlert('Please select a PNG image for the pack icon.', 'warning');
+                    iconInput.value = '';
+                    packIcon = null;
+                    imagePreview.src = '';
+                }
+            });
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                handleFiles(files);
+            }
+            
+            function handleFileSelect(e) {
+                const files = e.target.files;
+                handleFiles(files);
+            }
+            
+            function handleFiles(files) {
+                const validExtensions = ['.ogg', '.wav', '.fsb'];
+                let validFiles = Array.from(files).filter(file => {
+                    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+                    return validExtensions.includes(ext);
+                });
+                
+                if (validFiles.length === 0) {
+                    showAlert('No valid audio files selected. Please select .ogg, .wav, or .fsb files.', 'warning');
+                    return;
+                }
+                
+                selectedFiles = [...selectedFiles, ...validFiles];
+                updateFileList();
+                fileInput.value = '';
+            }
+            
+            function updateFileList() {
+                if (selectedFiles.length === 0) {
+                    fileList.innerHTML = '<p class="text-muted text-center">No files selected</p>';
+                    createPackBtn.disabled = true;
+                    return;
+                }
+                
+                createPackBtn.disabled = false;
+                fileList.innerHTML = '';
+                
+                selectedFiles.forEach((file, index) => {
+                    const fileDiv = document.createElement('div');
+                    fileDiv.className = 'd-flex justify-content-between align-items-center border-bottom py-2';
+                    
+                    const nameSpan = document.createElement('span');
+                    nameSpan.textContent = file.name;
+                    
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'btn btn-sm btn-outline-danger';
+                    removeBtn.innerHTML = '&times;';
+                    removeBtn.onclick = () => {
+                        selectedFiles.splice(index, 1);
+                        updateFileList();
+                    };
+                    
+                    fileDiv.appendChild(nameSpan);
+                    fileDiv.appendChild(removeBtn);
+                    fileList.appendChild(fileDiv);
+                });
+            }
+            
+            function clearFileList() {
+                selectedFiles = [];
+                updateFileList();
+            }
+            
+            function createSoundPack() {
+                if (selectedFiles.length === 0) {
+                    showAlert('Please select at least one audio file.', 'warning');
+                    return;
+                }
+                
+                const packName = document.getElementById('packName').value.trim() || 'Custom Sound Pack';
+                const packDescription = document.getElementById('packDescription').value.trim() || 'Custom sounds for Minecraft';
+                
+                progress.style.display = 'block';
+                progressBar.style.width = '0%';
+                progressBar.textContent = '0%';
+                
+                const zip = new JSZip();
+                const totalFiles = selectedFiles.length + 2; // +2 for manifest.json and sound_definitions.json
+                let processedFiles = 0;
+                
+                // Create directory structure
+                const customMusicDir = zip.folder('sounds').folder('custom_music');
+                
+                // Create manifest.json with random UUID
+                const uuid = generateUUID();
+                const manifest = {
+                    format_version: 2,
+                    header: {
+                        name: packName,
+                        description: packDescription,
+                        uuid: uuid,
+                        version: [1, 0, 0],
+                        min_engine_version: [1, 16, 0]
+                    },
+                    modules: [
+                        {
+                            type: "resources",
+                            uuid: generateUUID(),
+                            version: [1, 0, 0]
+                        }
+                    ]
+                };
+                
+                zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+                updateProgress(++processedFiles, totalFiles);
+                
+                // Add pack icon if available
+                if (packIcon) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const binaryData = e.target.result;
+                        zip.file("pack_icon.png", binaryData, {binary: true});
+                    };
+                    reader.readAsArrayBuffer(packIcon);
+                }
+                
+                // Create sound_definitions.json
+                const soundDefinitions = {
+                    format_version: "1.20.20",
+                    sound_definitions: {
+                        // ミュート用のデフォルト音定義（予め書いておく）
+                        "music.game": {"sounds":[]},
+                        "music.game.basalt_deltas": {"sounds":[]},
+                        "music.game.creative": {"sounds":[]},
+                        "music.game.credits": {"sounds":[]},
+                        "music.game.crimson_forest": {"sounds":[]},
+                        "music.game.deep_dark": {"sounds":[]},
+                        "music.game.dripstone_caves": {"sounds":[]},
+                        "music.game.end": {"sounds":[]},
+                        "music.game.endboss": {"sounds":[]},
+                        "music.game.frozen_peaks": {"sounds":[]},
+                        "music.game.grove": {"sounds":[]},
+                        "music.game.jagged_peaks": {"sounds":[]},
+                        "music.game.lush_caves": {"sounds":[]},
+                        "music.game.meadow": {"sounds":[]},
+                        "music.game.nether": {"sounds":[]},
+                        "music.game.nether_wastes": {"sounds":[]},
+                        "music.game.snowy_slopes": {"sounds":[]},
+                        "music.game.soulsand_valley": {"sounds":[]},
+                        "music.game.stony_peaks": {"sounds":[]},
+                        "music.game.swamp_music": {"sounds":[]},
+                        "music.game.warped_forest": {"sounds":[]},
+                        "music.game.water": {"sounds":[]},
+                        "music.game_and_wild_equal_chance": {"sounds":[]},
+                        "music.game_and_wild_favor_game": {"sounds":[]},
+                        "music.menu": {"sounds":[]},
+                        "music.overworld.bamboo_jungle": {"sounds":[]},
+                        "music.overworld.cherry_grove": {"sounds":[]},
+                        "music.overworld.deep_dark": {"sounds":[]},
+                        "music.overworld.desert": {"sounds":[]},
+                        "music.overworld.dripstone_caves": {"sounds":[]},
+                        "music.overworld.flower_forest": {"sounds":[]},
+                        "music.overworld.grove": {"sounds":[]},
+                        "music.overworld.jagged_peaks": {"sounds":[]},
+                        "music.overworld.jungle": {"sounds":[]},
+                        "music.overworld.jungle_edge": {"sounds":[]},
+                        "music.overworld.lush_caves": {"sounds":[]},
+                        "music.overworld.mesa": {"sounds":[]},
+                        "music.overworld.snowy_slopes": {"sounds":[]},
+                        "music.overworld.stony_peaks": {"sounds":[]}
+                    }
+                };
+                
+                const fileReaders = [];
+                
+                selectedFiles.forEach(file => {
+                    const reader = new FileReader();
+                    const promise = new Promise(resolve => {
+                        reader.onload = function(e) {
+                            const fileData = e.target.result;
+                            const fileName = file.name;
+                            const fileNameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
+                            
+                            // Add file to the zip in the custom_music directory
+                            customMusicDir.file(fileName, fileData, {binary: true});
+                            
+                            // Add entry to sound_definitions.json
+                            soundDefinitions.sound_definitions["music." + fileNameWithoutExt] = {
+                                "category": "music",
+                                "sounds": [
+                                    {
+                                        "name": "sounds/custom_music/" + fileNameWithoutExt,
+                                        "stream": true,
+                                        "volume": 1.0
+                                    }
+                                ]
+                            };
+                            
+                            updateProgress(++processedFiles, totalFiles);
+                            resolve();
+                        };
+                    });
+                    
+                    fileReaders.push(promise);
+                    reader.readAsArrayBuffer(file);
+                });
+                
+                Promise.all(fileReaders).then(() => {
+                    zip.file("sounds/sound_definitions.json", JSON.stringify(soundDefinitions, null, 2));
+                    updateProgress(++processedFiles, totalFiles);
+                    
+                    // Generate the zip file
+                    zip.generateAsync({type: 'blob'})
+                        .then(function(content) {
+                            // Save the zip file
+                            saveAs(content, 'soundpack.mcpack');
+                            
+                            progressBar.style.width = '100%';
+                            progressBar.textContent = 'Done!';
+                            
+                            setTimeout(() => {
+                                progress.style.display = 'none';
+                            }, 3000);
+                            
+                            showAlert('Sound pack created successfully!', 'success');
+                        });
+                });
+            }
+            
+            function updateProgress(processed, total) {
+                const percent = Math.round((processed / total) * 100);
+                progressBar.style.width = percent + '%';
+                progressBar.textContent = percent + '%';
+            }
+            
+            function showAlert(message, type) {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+                alertDiv.role = 'alert';
+                alertDiv.innerHTML = `
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                
+                alertArea.appendChild(alertDiv);
+                
+                setTimeout(() => {
+                    alertDiv.classList.remove('show');
+                    setTimeout(() => alertArea.removeChild(alertDiv), 300);
+                }, 5000);
+            }
+            
+            function generateUUID() {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    const r = Math.random() * 16 | 0;
+                    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
